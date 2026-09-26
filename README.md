@@ -1,9 +1,10 @@
 # Dart client for gatefile.
 
-Single-document sync over REST + SSE. Full replace only.
-Version is server `ETag`. `put` sends `_etag` as `If-Match`.
+Client library for [Gatefile](https://github.com/galets/gatefile), single-document sync over REST + SSE. 
 
 ## Interface
+
+Full replace only. Version is server `ETag`. `put` sends `_etag` as `If-Match`.
 
 ```dart
 typedef Content = String;
