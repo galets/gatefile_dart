@@ -196,29 +196,76 @@ final class GatefileDocument {
     }
   }
 
+  // Reconnect policy. Stream termination => immediate reconnect.
+  // subscribe() failure (server reject) => 5s backoff capped at 30s.
+  static const _retryBase = Duration(seconds: 5);
+  static const _retryMax = Duration(seconds: 30);
+
   void _listenSse() async {
-    try {
-      final events = await _transport.subscribe();
-      await for (final etag in events) {
+    var backoff = _retryBase;
+
+    while (!_closed) {
+      Stream<String> events;
+
+      try {
+        events = await _transport.subscribe();
+      } catch (e) {
         if (_closed) {
           break;
         }
 
-        // SSE never updates _etag. Only get()/put() do.
-        // Before first get() _etag is empty, so ignore all events.
-        if (_etag.isEmpty) {
-          continue;
-        }
+        stderr.writeln('gatefile: SSE subscribe failed: $e');
 
-        if (etag != _etag) {
-          _stale = true;
-          if (!_updated.isClosed) {
-            _updated.add(null);
+        await Future.delayed(backoff);
+
+        // Exponential backoff capped at _retryMax.
+        backoff = Duration(
+          seconds: (backoff.inSeconds * 2).clamp(
+            _retryBase.inSeconds,
+            _retryMax.inSeconds,
+          ),
+        );
+
+        continue;
+      }
+
+      // subscribe() succeeded. Reset backoff.
+      backoff = _retryBase;
+
+      try {
+        await for (final etag in events) {
+          if (_closed) {
+            break;
+          }
+
+          // SSE never updates _etag. Only get()/put() do.
+          // Before first get() _etag is empty, so ignore all events.
+          if (_etag.isEmpty) {
+            continue;
+          }
+
+          if (etag != _etag) {
+            _stale = true;
+
+            if (!_updated.isClosed) {
+              _updated.add(null);
+            }
           }
         }
+      } catch (e) {
+        if (_closed) {
+          break;
+        }
+
+        stderr.writeln('gatefile: SSE stream error: $e');
       }
-    } catch (_) {
-      // SSE lossy by design. Ignore; next get() still works.
+
+      if (_closed) {
+        break;
+      }
+
+      // Stream terminated. Reconnect immediately.
+      stderr.writeln('gatefile: SSE disconnected, reconnecting');
     }
   }
 }

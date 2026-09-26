@@ -1,6 +1,6 @@
 name: gatefile_dart
 description: Dart client for gatefile single-document sync server.
-version: 0.1.0
+version: 0.1.0+1
 
 environment:
   sdk: ^3.0.0
